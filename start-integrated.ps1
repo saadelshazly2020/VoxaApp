@@ -1,0 +1,24 @@
+#!/usr/bin/env pwsh
+<#
+.SYNOPSIS
+    Starts the integrated .NET + Vue development environment
+.DESCRIPTION
+    Runs the .NET application which automatically starts and proxies the Vue dev server
+#>
+
+Write-Host "?? Starting Integrated Development Environment" -ForegroundColor Green
+Write-Host ""
+Write-Host "The .NET app will automatically:" -ForegroundColor Cyan
+Write-Host "  ? Check for Node.js" -ForegroundColor White
+Write-Host "  ? Install npm packages (if needed)" -ForegroundColor White
+Write-Host "  ? Start the Vue dev server (port 3000)" -ForegroundColor White
+Write-Host "  ? Start the .NET API (port 5274)" -ForegroundColor White
+Write-Host "  ? Proxy Vue UI through .NET" -ForegroundColor White
+Write-Host ""
+Write-Host "???????????????????????????????????????????????????" -ForegroundColor Gray
+Write-Host "?? Access your app at: http://localhost:5274" -ForegroundColor Green
+Write-Host "???????????????????????????????????????????????????" -ForegroundColor Gray
+Write-Host ""
+
+# Run the .NET application
+dotnet run --project VideoChatingApp.WebRTC.csproj

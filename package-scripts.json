@@ -1,0 +1,13 @@
+{
+  "scripts": {
+    "client:install": "cd client-app && npm install",
+    "client:dev": "cd client-app && npm run dev",
+    "client:build": "cd client-app && npm run build",
+    "client:preview": "cd client-app && npm run preview",
+    "backend:dev": "dotnet run",
+    "backend:watch": "dotnet watch run",
+    "dev": "Start-Process powershell -ArgumentList '-NoExit', '-Command', 'dotnet run' ; Start-Sleep -Seconds 3 ; cd client-app ; npm run dev",
+    "build": "cd client-app && npm run build && cd .. && dotnet build",
+    "publish": "cd client-app && npm run build && cd .. && dotnet publish -c Release"
+  }
+}
