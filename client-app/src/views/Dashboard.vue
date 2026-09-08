@@ -3,24 +3,24 @@
     <!-- Header/Navigation -->
     <nav class="bg-white shadow-md">
       <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div class="flex justify-between items-center h-16">
+        <div class="flex justify-between items-center h-16 gap-3">
           <!-- Logo -->
-          <div class="flex items-center gap-3">
-            <div class="h-10 w-10 bg-gradient-to-br from-blue-500 to-purple-600 rounded-lg flex items-center justify-center">
+          <div class="flex items-center gap-3 min-w-0">
+            <div class="h-10 w-10 flex-shrink-0 bg-gradient-to-br from-blue-500 to-purple-600 rounded-lg flex items-center justify-center">
               <svg class="h-6 w-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
               </svg>
             </div>
-            <h1 class="text-xl font-bold text-gray-800">VideoChat</h1>
+            <h1 class="text-xl font-bold text-gray-800 truncate">VideoChat</h1>
           </div>
 
           <!-- User Info & Actions -->
-          <div class="flex items-center gap-4">
-            <div class="text-right">
+          <div class="flex items-center gap-3 sm:gap-4 flex-shrink-0">
+            <div class="text-right hidden sm:block">
               <p class="text-sm font-semibold text-gray-800">{{ currentUser?.displayName || currentUser?.username }}</p>
               <p class="text-xs text-gray-500">@{{ currentUser?.username }}</p>
             </div>
-            
+
             <div class="relative">
               <div class="w-10 h-10 bg-gradient-to-br from-blue-400 to-purple-500 rounded-full flex items-center justify-center text-white font-bold cursor-pointer">
                 {{ currentUser?.username?.[0]?.toUpperCase() }}
@@ -43,29 +43,31 @@
     </nav>
 
     <!-- Main Content -->
-    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-      <!-- Tabs -->
-      <div class="bg-white rounded-xl shadow-md p-2 mb-8 flex gap-2">
-        <button
-          v-for="tab in tabs"
-          :key="tab.id"
-          @click="activeTab = tab.id"
-          :class="[
-            'flex-1 py-3 px-4 rounded-lg font-semibold transition-all flex items-center justify-center gap-2',
-            activeTab === tab.id
-              ? 'bg-gradient-to-r from-blue-600 to-purple-600 text-white shadow-lg'
-              : 'text-gray-700 hover:bg-gray-100'
-          ]"
-        >
-          <component :is="tab.icon" class="w-5 h-5" />
-          {{ tab.label }}
-          <span
-            v-if="tab.badge && tab.badge > 0"
-            class="ml-2 px-2 py-0.5 bg-red-500 text-white text-xs font-bold rounded-full"
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-6 lg:py-8">
+      <!-- Tabs: scrolls horizontally on small screens, equal columns from lg up -->
+      <div class="bg-white rounded-xl shadow-md p-2 mb-4 sm:mb-8">
+        <div class="flex gap-2 overflow-x-auto no-scrollbar lg:grid lg:grid-cols-6 lg:overflow-visible">
+          <button
+            v-for="tab in tabs"
+            :key="tab.id"
+            @click="activeTab = tab.id"
+            :class="[
+              'flex-shrink-0 min-w-[8.5rem] lg:min-w-0 whitespace-nowrap py-3 px-4 rounded-lg font-semibold transition-all flex items-center justify-center gap-2',
+              activeTab === tab.id
+                ? 'bg-gradient-to-r from-blue-600 to-purple-600 text-white shadow-lg'
+                : 'text-gray-700 hover:bg-gray-100'
+            ]"
           >
-            {{ tab.badge }}
-          </span>
-        </button>
+            <component :is="tab.icon" class="w-5 h-5" />
+            {{ tab.label }}
+            <span
+              v-if="tab.badge && tab.badge > 0"
+              class="ml-1 px-2 py-0.5 bg-red-500 text-white text-xs font-bold rounded-full"
+            >
+              {{ tab.badge }}
+            </span>
+          </button>
+        </div>
       </div>
 
       <!-- Tab Content -->
@@ -85,10 +87,10 @@
             />
           </div>
 
-          <!-- Chat Tab -->
-          <div v-if="activeTab === 'chat'" class="grid grid-cols-1 lg:grid-cols-2 gap-4 h-[600px]">
+          <!-- Chat Tab: one pane at a time on mobile (list -> conversation), split view from lg up -->
+          <div v-if="activeTab === 'chat'" class="flex flex-col lg:grid lg:grid-cols-2 gap-4 h-[75vh] min-h-[380px] lg:h-[600px]">
             <!-- Conversations List -->
-            <div class="h-full overflow-hidden">
+            <div class="h-full min-h-0 overflow-hidden lg:block" :class="selectedChatUserId ? 'hidden' : 'block'">
               <ConversationsList
                 ref="conversationsListRef"
                 :selected-user-id="selectedChatUserId || undefined"
@@ -97,7 +99,7 @@
             </div>
 
             <!-- Chat Window -->
-            <div class="h-full overflow-hidden" v-if="selectedChatUserId">
+            <div class="h-full min-h-0 overflow-hidden" v-if="selectedChatUserId">
               <ChatWindow
                 :user-id="selectedChatUserId"
                 :user-name="selectedChatUserName"
@@ -108,9 +110,9 @@
                 @online-status-changed="handlePeerOnlineStatusChanged"
               />
             </div>
-            
+
             <!-- Empty State -->
-            <div v-else class="h-full flex items-center justify-center bg-gray-50 rounded-xl">
+            <div v-else class="h-full hidden lg:flex items-center justify-center bg-gray-50 rounded-xl">
               <div class="text-center">
                 <svg class="mx-auto h-16 w-16 text-gray-400 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
@@ -283,6 +285,9 @@
         </div>
       </div>
     </div>
+
+    <!-- Incoming / outgoing / active call UI -->
+    <CallOverlay />
   </div>
 </template>
 
@@ -298,8 +303,11 @@ import UserSearch from '@/components/UserSearch.vue';
 import ConversationsList from '@/components/ConversationsList.vue';
 import ChatWindow from '@/components/ChatWindow.vue';
 import PostFeed from '@/components/PostFeed.vue';
+import CallOverlay from '@/components/CallOverlay.vue';
+import { useCall } from '@/composables/useCall';
 
 const router = useRouter();
+const { startCall } = useCall();
 type TabId = 'friends' | 'chat' | 'requests' | 'search' | 'video' | 'posts';
 
 const activeTab = ref<TabId>('posts');
@@ -414,9 +422,8 @@ const handleLogout = async () => {
 };
 
 const handleCallFriend = (friendId: number, friendName: string) => {
-  // TODO: Implement video call initiation
-  console.log('Calling friend:', friendId, friendName);
-  router.push(`/video-chat?callUser=${friendId}`);
+  // Calls are handled in-app so the other person gets the ring wherever they are
+  void startCall(friendId, friendName);
 };
 
 const openChatWithFriend = (friendId: number, friendName: string, isOnline: boolean) => {
@@ -451,7 +458,7 @@ const handleUpdateUnreadCount = async () => {
 };
 
 const handleVideoCallFromChat = (userId: number) => {
-  router.push(`/video-chat?callUser=${userId}`);
+  void startCall(userId, selectedChatUserName.value);
 };
 
 const joinRoom = () => {

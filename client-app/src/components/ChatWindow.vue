@@ -1,18 +1,19 @@
 <template>
   <div class="flex flex-col h-full bg-white rounded-xl shadow-lg overflow-hidden">
     <!-- Chat Header -->
-    <div class="bg-gradient-to-r from-blue-600 to-purple-600 text-white p-4 flex items-center justify-between">
-      <div class="flex items-center gap-3">
+    <div class="bg-gradient-to-r from-blue-600 to-purple-600 text-white p-3 sm:p-4 flex items-center justify-between gap-2 flex-shrink-0">
+      <div class="flex items-center gap-2 sm:gap-3 min-w-0">
         <button
           @click="$emit('close')"
-          class="lg:hidden p-2 hover:bg-white/20 rounded-lg transition"
+          class="lg:hidden p-2 -ml-1 hover:bg-white/20 rounded-lg transition flex-shrink-0"
+          title="Back to conversations"
         >
           <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
           </svg>
         </button>
-        
-        <div class="relative">
+
+        <div class="relative flex-shrink-0">
           <div class="w-10 h-10 bg-white/20 rounded-full flex items-center justify-center font-bold">
             {{ userName[0].toUpperCase() }}
           </div>
@@ -24,8 +25,8 @@
           />
         </div>
         
-        <div>
-          <p class="font-semibold">{{ userName }}</p>
+        <div class="min-w-0">
+          <p class="font-semibold truncate">{{ userName }}</p>
           <p class="text-xs text-blue-100">
             <span :class="{ 'text-red-200 font-semibold': peerBusy }">
               {{ peerBusy ? 'Busy - in a call' : (peerOnline ? 'Online' : 'Offline') }}
@@ -34,14 +35,14 @@
         </div>
       </div>
 
-      <div class="flex items-center gap-2">
+      <div class="flex items-center gap-1 sm:gap-2 flex-shrink-0">
         <!-- Call Button (peer to peer) -->
         <button
           @click="startCall"
           :disabled="!canCall"
           :title="callButtonTitle"
           :class="[
-            'flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-semibold transition',
+            'flex items-center gap-1.5 px-2.5 sm:px-3 py-2 rounded-lg text-sm font-semibold transition',
             canCall
               ? 'bg-white/20 hover:bg-white/30 text-white'
               : 'bg-white/5 text-white/40 cursor-not-allowed'
@@ -50,7 +51,7 @@
           <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
             <path d="M2 6a2 2 0 012-2h6a2 2 0 012 2v8a2 2 0 01-2 2H4a2 2 0 01-2-2V6zM14.553 7.106A1 1 0 0014 8v4a1 1 0 00.553.894l2 1A1 1 0 0018 13V7a1 1 0 00-1.447-.894l-2 1z" />
           </svg>
-          <span>{{ peerBusy ? 'Busy' : 'Call' }}</span>
+          <span class="hidden sm:inline">{{ peerBusy ? 'Busy' : 'Call' }}</span>
         </button>
 
 
@@ -69,7 +70,7 @@
     <!-- Messages Area -->
     <div 
       ref="messagesContainer"
-      class="flex-1 overflow-y-auto p-4 space-y-3 bg-gray-50"
+      class="flex-1 min-h-0 overflow-y-auto overscroll-contain p-3 sm:p-4 space-y-3 bg-gray-50"
       @scroll="handleScroll"
     >
       <!-- Loading More Messages -->
@@ -94,7 +95,7 @@
         >
           <div
             :class="[
-              'max-w-xs lg:max-w-md px-4 py-2 rounded-2xl break-words',
+              'max-w-[80%] sm:max-w-xs lg:max-w-md px-4 py-2 rounded-2xl break-words',
               message.isSentByMe
                 ? 'bg-gradient-to-r from-blue-600 to-purple-600 text-white rounded-br-none'
                 : 'bg-white text-gray-800 border border-gray-200 rounded-bl-none'
@@ -150,20 +151,21 @@
     </div>
 
     <!-- Message Input -->
-    <div class="border-t border-gray-200 p-4 bg-white">
+    <div class="border-t border-gray-200 p-3 sm:p-4 bg-white flex-shrink-0 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:pb-4">
       <div class="flex gap-2">
         <input
           v-model="newMessage"
           type="text"
           placeholder="Type a message..."
-          class="flex-1 px-4 py-2 border border-gray-300 rounded-full focus:outline-none focus:ring-2 focus:ring-blue-500"
+          enterkeyhint="send"
+          class="flex-1 min-w-0 px-4 py-2 border border-gray-300 rounded-full focus:outline-none focus:ring-2 focus:ring-blue-500"
           @keyup.enter="sendMessage"
           :disabled="sending"
         />
         <button
           @click="sendMessage"
           :disabled="!newMessage.trim() || sending"
-          class="px-6 py-2 bg-gradient-to-r from-blue-600 to-purple-600 text-white font-semibold rounded-full hover:shadow-lg transition disabled:opacity-50"
+          class="px-4 sm:px-6 py-2 bg-gradient-to-r from-blue-600 to-purple-600 text-white font-semibold rounded-full hover:shadow-lg transition disabled:opacity-50 flex-shrink-0"
         >
           {{ sending ? '...' : 'Send' }}
         </button>

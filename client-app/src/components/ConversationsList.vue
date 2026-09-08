@@ -1,6 +1,6 @@
 <template>
-  <div class="bg-white rounded-xl shadow-lg p-6">
-    <div class="flex items-center justify-between mb-6">
+  <div class="bg-white rounded-xl shadow-lg p-4 sm:p-6 h-full flex flex-col overflow-hidden">
+    <div class="flex items-center justify-between mb-4 sm:mb-6 flex-shrink-0">
       <h2 class="text-2xl font-bold text-gray-800">Messages</h2>
       <div class="flex items-center gap-2">
         <span 
@@ -36,7 +36,7 @@
     </div>
 
     <!-- Conversations List -->
-    <div v-else class="space-y-2">
+    <div v-else class="space-y-2 flex-1 min-h-0 overflow-y-auto overscroll-contain -mr-2 pr-2">
       <div
         v-for="conversation in conversations"
         :key="conversation.id"

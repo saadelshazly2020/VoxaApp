@@ -13,6 +13,7 @@ public class VideoCallHub : Hub
     private readonly IRoomManager _roomManager;
     private readonly ILogger<VideoCallHub> _logger;
     private readonly IDictionary<int, ICollection<string>> _chatUserConnections;
+    private readonly IDictionary<string, bool> _callStatusByUserId;
     private readonly IServiceScopeFactory _scopeFactory;
 
     public VideoCallHub(
@@ -20,19 +21,58 @@ public class VideoCallHub : Hub
         IRoomManager roomManager,
         ILogger<VideoCallHub> logger,
         IDictionary<int, ICollection<string>> chatUserConnections,
+        IDictionary<string, bool> callStatusByUserId,
         IServiceScopeFactory scopeFactory)
     {
         _userManager = userManager;
         _roomManager = roomManager;
         _logger = logger;
         _chatUserConnections = chatUserConnections;
+        _callStatusByUserId = callStatusByUserId;
         _scopeFactory = scopeFactory;
     }
 
     // Ask whether a user is currently in a call (used by the chat UI)
     public Task<bool> GetCallStatus(int userId)
     {
-        return Task.FromResult(_userManager.IsInCall(userId.ToString()));
+        return Task.FromResult(IsBusy(userId.ToString()));
+    }
+
+    // A user can be reachable through the video chat page (RegisterUser) and/or
+    // through the dashboard chat (RegisterChatUser). Call signalling has to work
+    // for both, otherwise calling somebody from the chat never reaches them.
+    private string? ResolveUserIdForConnection(string connectionId)
+    {
+        var user = _userManager.GetUserByConnectionId(connectionId);
+        if (user != null) return user.UserId;
+
+        var chatEntry = _chatUserConnections.FirstOrDefault(x => x.Value.Contains(connectionId));
+        return chatEntry.Value != null ? chatEntry.Key.ToString() : null;
+    }
+
+    private IReadOnlyList<string> GetConnectionIdsForUser(string userId)
+    {
+        var connectionIds = new List<string>();
+
+        var videoConnectionId = _userManager.GetConnectionIdByUserId(userId);
+        if (!string.IsNullOrEmpty(videoConnectionId)) connectionIds.Add(videoConnectionId!);
+
+        if (int.TryParse(userId, out var numericUserId) &&
+            _chatUserConnections.TryGetValue(numericUserId, out var chatConnections))
+        {
+            connectionIds.AddRange(chatConnections);
+        }
+
+        return connectionIds.Distinct().ToList();
+    }
+
+    private bool IsBusy(string userId)
+    {
+        if (string.IsNullOrWhiteSpace(userId)) return false;
+
+        if (_callStatusByUserId.TryGetValue(userId, out var busy) && busy) return true;
+
+        return _userManager.IsInCall(userId);
     }
 
     // Mark the caller as busy while the call is ringing out
@@ -40,6 +80,7 @@ public class VideoCallHub : Hub
     {
         if (string.IsNullOrWhiteSpace(userId)) return;
 
+        _callStatusByUserId[userId] = busy;
         _userManager.SetCallStatus(userId, busy);
 
         if (!broadcast || !int.TryParse(userId, out var numericUserId)) return;
@@ -121,33 +162,33 @@ public class VideoCallHub : Hub
     {
         try
         {
-            var callerUser = _userManager.GetUserByConnectionId(Context.ConnectionId);
-            if (callerUser == null)
+            var callerUserId = ResolveUserIdForConnection(Context.ConnectionId);
+            if (callerUserId == null)
             {
                 _logger.LogWarning("Call attempted by unregistered connection {ConnectionId}", Context.ConnectionId);
                 await Clients.Caller.SendAsync("Error", "You must register first");
                 return;
             }
 
-            var targetConnectionId = _userManager.GetConnectionIdByUserId(targetUserId);
-            if (targetConnectionId == null)
+            var targetConnectionIds = GetConnectionIdsForUser(targetUserId);
+            if (targetConnectionIds.Count == 0)
             {
-                _logger.LogWarning("User {CallerUserId} attempted to call non-existent user {TargetUserId}", 
-                    callerUser.UserId, targetUserId);
-                await Clients.Caller.SendAsync("Error", "Target user not found");
+                _logger.LogWarning("User {CallerUserId} attempted to call non-existent user {TargetUserId}",
+                    callerUserId, targetUserId);
+                await Clients.Caller.SendAsync("Error", "Target user is offline");
                 return;
             }
 
-            _logger.LogInformation("User {CallerUserId} calling {TargetUserId}", callerUser.UserId, targetUserId);
+            _logger.LogInformation("User {CallerUserId} calling {TargetUserId}", callerUserId, targetUserId);
 
             // Caller is busy while the call rings / is active
-            await SetBusyAsync(callerUser.UserId, true);
+            await SetBusyAsync(callerUserId, true);
 
             // Notify target user about incoming call (ringing)
-            await Clients.Client(targetConnectionId).SendAsync("IncomingCall", callerUser.UserId);
+            await Clients.Clients(targetConnectionIds).SendAsync("IncomingCall", callerUserId);
 
             // Send offer to target user
-            await Clients.Client(targetConnectionId).SendAsync("ReceiveOffer", callerUser.UserId, offer);
+            await Clients.Clients(targetConnectionIds).SendAsync("ReceiveOffer", callerUserId, offer);
         }
         catch (Exception ex)
         {
@@ -160,32 +201,32 @@ public class VideoCallHub : Hub
     {
         try
         {
-            var calleeUser = _userManager.GetUserByConnectionId(Context.ConnectionId);
-            if (calleeUser == null)
+            var calleeUserId = ResolveUserIdForConnection(Context.ConnectionId);
+            if (calleeUserId == null)
             {
                 _logger.LogWarning("Call acceptance attempted by unregistered connection {ConnectionId}", Context.ConnectionId);
                 await Clients.Caller.SendAsync("Error", "You must register first");
                 return;
             }
 
-            var callerConnectionId = _userManager.GetConnectionIdByUserId(callerUserId);
-            if (callerConnectionId == null)
+            var callerConnectionIds = GetConnectionIdsForUser(callerUserId);
+            if (callerConnectionIds.Count == 0)
             {
                 _logger.LogWarning("User {CalleeUserId} attempted to accept call from non-existent user {CallerUserId}",
-                    calleeUser.UserId, callerUserId);
+                    calleeUserId, callerUserId);
                 await Clients.Caller.SendAsync("Error", "Caller not found");
                 return;
             }
 
-            _logger.LogInformation("User {CalleeUserId} accepted call from {CallerUserId}", 
-                calleeUser.UserId, callerUserId);
+            _logger.LogInformation("User {CalleeUserId} accepted call from {CallerUserId}",
+                calleeUserId, callerUserId);
 
             // Both sides are now in a call
-            await SetBusyAsync(calleeUser.UserId, true);
+            await SetBusyAsync(calleeUserId, true);
             await SetBusyAsync(callerUserId, true);
 
             // Notify caller that call was accepted
-            await Clients.Client(callerConnectionId).SendAsync("CallAccepted", calleeUser.UserId);
+            await Clients.Clients(callerConnectionIds).SendAsync("CallAccepted", calleeUserId);
         }
         catch (Exception ex)
         {
@@ -198,30 +239,30 @@ public class VideoCallHub : Hub
     {
         try
         {
-            var calleeUser = _userManager.GetUserByConnectionId(Context.ConnectionId);
-            if (calleeUser == null)
+            var calleeUserId = ResolveUserIdForConnection(Context.ConnectionId);
+            if (calleeUserId == null)
             {
                 _logger.LogWarning("Call rejection attempted by unregistered connection {ConnectionId}", Context.ConnectionId);
                 return;
             }
 
-            var callerConnectionId = _userManager.GetConnectionIdByUserId(callerUserId);
-            if (callerConnectionId == null)
+            var callerConnectionIds = GetConnectionIdsForUser(callerUserId);
+            if (callerConnectionIds.Count == 0)
             {
                 _logger.LogWarning("User {CalleeUserId} attempted to reject call from non-existent user {CallerUserId}",
-                    calleeUser.UserId, callerUserId);
+                    calleeUserId, callerUserId);
                 return;
             }
 
-            _logger.LogInformation("User {CalleeUserId} rejected call from {CallerUserId}", 
-                calleeUser.UserId, callerUserId);
+            _logger.LogInformation("User {CalleeUserId} rejected call from {CallerUserId}",
+                calleeUserId, callerUserId);
 
             // Nobody is in a call anymore
-            await SetBusyAsync(calleeUser.UserId, false);
+            await SetBusyAsync(calleeUserId, false);
             await SetBusyAsync(callerUserId, false);
 
             // Notify caller that call was rejected
-            await Clients.Client(callerConnectionId).SendAsync("CallRejected", calleeUser.UserId, reason);
+            await Clients.Clients(callerConnectionIds).SendAsync("CallRejected", calleeUserId, reason);
         }
         catch (Exception ex)
         {
@@ -233,29 +274,29 @@ public class VideoCallHub : Hub
     {
         try
         {
-            var callerUser = _userManager.GetUserByConnectionId(Context.ConnectionId);
-            if (callerUser == null)
+            var callerUserId = ResolveUserIdForConnection(Context.ConnectionId);
+            if (callerUserId == null)
             {
                 _logger.LogWarning("Call cancellation attempted by unregistered connection {ConnectionId}", Context.ConnectionId);
                 return;
             }
 
-            var targetConnectionId = _userManager.GetConnectionIdByUserId(targetUserId);
-            if (targetConnectionId == null)
+            var targetConnectionIds = GetConnectionIdsForUser(targetUserId);
+            if (targetConnectionIds.Count == 0)
             {
                 _logger.LogWarning("User {CallerUserId} attempted to cancel call to non-existent user {TargetUserId}",
-                    callerUser.UserId, targetUserId);
+                    callerUserId, targetUserId);
                 return;
             }
 
-            _logger.LogInformation("User {CallerUserId} cancelled call to {TargetUserId}", 
-                callerUser.UserId, targetUserId);
+            _logger.LogInformation("User {CallerUserId} cancelled call to {TargetUserId}",
+                callerUserId, targetUserId);
 
-            await SetBusyAsync(callerUser.UserId, false);
+            await SetBusyAsync(callerUserId, false);
             await SetBusyAsync(targetUserId, false);
 
             // Notify target user that call was cancelled
-            await Clients.Client(targetConnectionId).SendAsync("CallCancelled", callerUser.UserId);
+            await Clients.Clients(targetConnectionIds).SendAsync("CallCancelled", callerUserId);
         }
         catch (Exception ex)
         {
@@ -267,29 +308,29 @@ public class VideoCallHub : Hub
     {
         try
         {
-            var user = _userManager.GetUserByConnectionId(Context.ConnectionId);
-            if (user == null)
+            var userId = ResolveUserIdForConnection(Context.ConnectionId);
+            if (userId == null)
             {
                 _logger.LogWarning("End call attempted by unregistered connection {ConnectionId}", Context.ConnectionId);
                 return;
             }
 
-            var otherConnectionId = _userManager.GetConnectionIdByUserId(otherUserId);
-            if (otherConnectionId == null)
+            var otherConnectionIds = GetConnectionIdsForUser(otherUserId);
+            if (otherConnectionIds.Count == 0)
             {
                 _logger.LogWarning("User {UserId} attempted to end call with non-existent user {OtherUserId}",
-                    user.UserId, otherUserId);
+                    userId, otherUserId);
                 return;
             }
 
-            _logger.LogInformation("User {UserId} ended call with {OtherUserId}", 
-                user.UserId, otherUserId);
+            _logger.LogInformation("User {UserId} ended call with {OtherUserId}",
+                userId, otherUserId);
 
-            await SetBusyAsync(user.UserId, false);
+            await SetBusyAsync(userId, false);
             await SetBusyAsync(otherUserId, false);
 
             // Notify the other user that call has ended
-            await Clients.Client(otherConnectionId).SendAsync("CallEnded", user.UserId);
+            await Clients.Clients(otherConnectionIds).SendAsync("CallEnded", userId);
         }
         catch (Exception ex)
         {
@@ -301,28 +342,28 @@ public class VideoCallHub : Hub
     {
         try
         {
-            var answererUser = _userManager.GetUserByConnectionId(Context.ConnectionId);
-            if (answererUser == null)
+            var answererUserId = ResolveUserIdForConnection(Context.ConnectionId);
+            if (answererUserId == null)
             {
                 _logger.LogWarning("Answer attempted by unregistered connection {ConnectionId}", Context.ConnectionId);
                 await Clients.Caller.SendAsync("Error", "You must register first");
                 return;
             }
 
-            var callerConnectionId = _userManager.GetConnectionIdByUserId(callerUserId);
-            if (callerConnectionId == null)
+            var callerConnectionIds = GetConnectionIdsForUser(callerUserId);
+            if (callerConnectionIds.Count == 0)
             {
                 _logger.LogWarning("User {AnswererUserId} attempted to answer non-existent user {CallerUserId}",
-                    answererUser.UserId, callerUserId);
+                    answererUserId, callerUserId);
                 await Clients.Caller.SendAsync("Error", "Caller not found");
                 return;
             }
 
-            _logger.LogInformation("User {AnswererUserId} answering call from {CallerUserId}", 
-                answererUser.UserId, callerUserId);
+            _logger.LogInformation("User {AnswererUserId} answering call from {CallerUserId}",
+                answererUserId, callerUserId);
 
             // Send answer to caller
-            await Clients.Client(callerConnectionId).SendAsync("ReceiveAnswer", answererUser.UserId, answer);
+            await Clients.Clients(callerConnectionIds).SendAsync("ReceiveAnswer", answererUserId, answer);
         }
         catch (Exception ex)
         {
@@ -335,25 +376,25 @@ public class VideoCallHub : Hub
     {
         try
         {
-            var senderUser = _userManager.GetUserByConnectionId(Context.ConnectionId);
-            if (senderUser == null)
+            var senderUserId = ResolveUserIdForConnection(Context.ConnectionId);
+            if (senderUserId == null)
             {
                 _logger.LogWarning("ICE candidate sent by unregistered connection {ConnectionId}", Context.ConnectionId);
                 return;
             }
 
-            var targetConnectionId = _userManager.GetConnectionIdByUserId(targetUserId);
-            if (targetConnectionId == null)
+            var targetConnectionIds = GetConnectionIdsForUser(targetUserId);
+            if (targetConnectionIds.Count == 0)
             {
                 _logger.LogWarning("ICE candidate sent to non-existent user {TargetUserId}", targetUserId);
                 return;
             }
 
-            _logger.LogDebug("Forwarding ICE candidate from {SenderUserId} to {TargetUserId}", 
-                senderUser.UserId, targetUserId);
+            _logger.LogDebug("Forwarding ICE candidate from {SenderUserId} to {TargetUserId}",
+                senderUserId, targetUserId);
 
             // Forward ICE candidate to target user
-            await Clients.Client(targetConnectionId).SendAsync("ReceiveIceCandidate", senderUser.UserId, candidate);
+            await Clients.Clients(targetConnectionIds).SendAsync("ReceiveIceCandidate", senderUserId, candidate);
         }
         catch (Exception ex)
         {
@@ -545,6 +586,12 @@ public class VideoCallHub : Hub
 
                     // Notify all clients about user going offline
                     await Clients.All.SendAsync("UserOnlineStatusChanged", chatUserId, false);
+
+                    // Free the user if no connection (chat or video) is left
+                    if (GetConnectionIdsForUser(chatUserId.ToString()).Count == 0)
+                    {
+                        await SetBusyAsync(chatUserId.ToString(), false);
+                    }
                 }
             }
         }

@@ -109,6 +109,16 @@ export class SignalRService {
     await this.connection.invoke('RegisterUser', userId);
   }
 
+  // Registers the connection for the signed-in user so calls can be routed to it
+  // even when the user is not on the video chat page (dashboard / chat).
+  async registerChatUser(userId: number): Promise<void> {
+    await this.connection.invoke('RegisterChatUser', userId);
+  }
+
+  async getCallStatus(userId: number): Promise<boolean> {
+    return await this.connection.invoke('GetCallStatus', userId);
+  }
+
   async createRoom(roomId: string): Promise<void> {
     await this.connection.invoke('CreateRoom', roomId);
   }

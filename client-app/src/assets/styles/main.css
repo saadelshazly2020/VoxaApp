@@ -58,6 +58,18 @@
   }
 }
 
+@layer utilities {
+  /* Horizontally scrollable strips (mobile tab bar) without a visible scrollbar */
+  .no-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+}
+
 /* Video elements */
 video {
   @apply rounded-lg bg-gray-900;

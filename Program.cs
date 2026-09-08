@@ -65,6 +65,10 @@ builder.Services.AddSingleton<IRoomManager, RoomManager>();
 builder.Services.AddSingleton<IDictionary<int, ICollection<string>>>(
     new ConcurrentDictionary<int, ICollection<string>>());
 
+// In-call ("busy") state per user id, shared by the video chat page and the chat dashboard
+builder.Services.AddSingleton<IDictionary<string, bool>>(
+    new ConcurrentDictionary<string, bool>());
+
 // Add CORS for development
 builder.Services.AddCors(options =>
 {
