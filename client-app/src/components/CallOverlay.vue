@@ -128,6 +128,7 @@
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
 import { useCall } from '@/composables/useCall';
 import { friendshipService } from '@/services/friendship.service';
+import { ringtonePlayer } from '@/utils/ringtone';
 import IncomingCallDialog from './IncomingCallDialog.vue';
 import OutgoingCallDialog from './OutgoingCallDialog.vue';
 
@@ -162,10 +163,21 @@ const peerDisplayName = computed(() => {
   if (peerName.value) return peerName.value;
 
   const id = Number(peerId.value);
+  if (!id) return '';
+
   const friend = friends.value.find(f => f.id === id);
   if (friend) return friend.displayName || friend.username;
 
-  return peerId.value ? `User ${peerId.value}` : '';
+  return `User ${peerId.value}`;
+});
+
+// Update peerName when friends list loads (for incoming calls)
+watch(friends, (list) => {
+  if (!peerName.value && peerId.value) {
+    const id = Number(peerId.value);
+    const friend = list.find(f => f.id === id);
+    if (friend) peerName.value = friend.displayName || friend.username;
+  }
 });
 
 const formattedDuration = computed(() => {
@@ -186,6 +198,18 @@ watch(localStream, async (stream) => {
     localVideoRef.value.srcObject = stream ?? null;
   }
 }, { immediate: true });
+
+// Also set local video when state changes to in-call (video element enters DOM)
+watch(state, async (value) => {
+  if (value === 'in-call') {
+    // Wait for DOM to fully render the video element
+    await nextTick();
+    await new Promise(r => setTimeout(r, 50));
+    if (localVideoRef.value && localStream.value && localVideoRef.value.srcObject !== localStream.value) {
+      localVideoRef.value.srcObject = localStream.value;
+    }
+  }
+});
 
 watch(remoteStreams, async (streams) => {
   await nextTick();
@@ -209,6 +233,13 @@ watch(state, (value) => {
       callSeconds.value++;
     }, 1000);
   }
+
+  // Ringtone control
+  if (value === 'ringing-in') {
+    ringtonePlayer.start();
+  } else {
+    ringtonePlayer.stop();
+  }
 });
 
 onMounted(async () => {
@@ -223,6 +254,7 @@ onMounted(async () => {
 
 onUnmounted(async () => {
   if (durationTimer) window.clearInterval(durationTimer);
+  ringtonePlayer.stop();
   await dispose();
 });
 </script>

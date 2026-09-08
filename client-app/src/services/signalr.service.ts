@@ -89,6 +89,53 @@ export class SignalRService {
     this.connection.on('Error', (message: string) => {
       this.emit('Error', message);
     });
+
+    // Chat events
+    this.connection.on('ReceiveMessage', (message: any) => {
+      this.emit('ReceiveMessage', message);
+    });
+
+    this.connection.on('MessagesRead', (payload: any) => {
+      this.emit('MessagesRead', payload);
+    });
+
+    // Presence events
+    this.connection.on('UserOnlineStatusChanged', (userId: number, isOnline: boolean) => {
+      this.emit('UserOnlineStatusChanged', userId, isOnline);
+    });
+
+    this.connection.on('UserBusyStatusChanged', (userId: number, isBusy: boolean) => {
+      this.emit('UserBusyStatusChanged', userId, isBusy);
+    });
+
+    // Post events
+    this.connection.on('NewPost', (post: any) => {
+      this.emit('NewPost', post);
+    });
+
+    this.connection.on('PostUpdated', (updated: any) => {
+      this.emit('PostUpdated', updated);
+    });
+
+    this.connection.on('PostDeleted', (postId: number) => {
+      this.emit('PostDeleted', postId);
+    });
+
+    this.connection.on('PostReactionUpdated', (payload: any) => {
+      this.emit('PostReactionUpdated', payload);
+    });
+
+    this.connection.on('PostReactionRemoved', (payload: any) => {
+      this.emit('PostReactionRemoved', payload);
+    });
+
+    this.connection.on('NewComment', (payload: any) => {
+      this.emit('NewComment', payload);
+    });
+
+    this.connection.on('CommentDeleted', (commentId: number) => {
+      this.emit('CommentDeleted', commentId);
+    });
   }
 
   async start(): Promise<void> {
@@ -174,6 +221,10 @@ export class SignalRService {
         handlers.splice(index, 1);
       }
     }
+  }
+
+  offAll(event: string): void {
+    this.eventHandlers.delete(event);
   }
 
   private emit(event: string, ...args: any[]): void {

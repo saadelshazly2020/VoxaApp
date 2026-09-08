@@ -168,25 +168,21 @@ public class FriendshipController : ControllerBase
         });
     }
 
-    [HttpGet("search/{username}")]
-    public async Task<IActionResult> SearchUsers(string username)
+    [HttpGet("search/{query}")]
+    public async Task<IActionResult> SearchUsers(string query)
     {
         var userId = GetUserId();
         if (userId == 0)
             return Unauthorized();
 
-        // This would be better as a separate service
-        var user = await _authService.GetUserByEmailAsync(username);
+        var users = await _friendshipService.SearchUsersAsync(query, userId);
 
-        if (user == null || user.Id == userId)
-            return NotFound();
-
-        var areFriends = await _friendshipService.AreFriendsAsync(userId, user.Id);
-        var pendingRequest = await _friendshipService.GetRequestAsync(userId, user.Id);
-
-        return Ok(new
+        var results = new List<object>();
+        foreach (var user in users)
         {
-            user = new
+            var areFriends = await _friendshipService.AreFriendsAsync(userId, user.Id);
+            var pendingRequest = await _friendshipService.GetRequestAsync(userId, user.Id);
+            results.Add(new
             {
                 user.Id,
                 user.Username,
@@ -195,8 +191,10 @@ public class FriendshipController : ControllerBase
                 user.ProfilePictureUrl,
                 isFriend = areFriends,
                 hasPendingRequest = pendingRequest != null
-            }
-        });
+            });
+        }
+
+        return Ok(new { users = results });
     }
 }
 

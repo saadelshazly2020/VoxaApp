@@ -305,6 +305,7 @@ import ChatWindow from '@/components/ChatWindow.vue';
 import PostFeed from '@/components/PostFeed.vue';
 import CallOverlay from '@/components/CallOverlay.vue';
 import { useCall } from '@/composables/useCall';
+import { pushNotificationService } from '@/services/push-notification.service';
 
 const router = useRouter();
 const { startCall } = useCall();
@@ -475,6 +476,12 @@ onMounted(async () => {
   }
 
   await loadStats();
+
+  // Initialize push notifications
+  await pushNotificationService.init();
+  if (await pushNotificationService.requestPermission() === 'granted') {
+    await pushNotificationService.subscribe();
+  }
 
   // Refresh stats every 30 seconds
   setInterval(loadStats, 30000);

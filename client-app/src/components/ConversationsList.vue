@@ -107,7 +107,8 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted } from 'vue';
 import { chatService, type Conversation } from '@/services/chat.service';
-import { authService } from '@/services/auth.service';
+import { signalRManager } from '@/services/signalr-manager';
+import type { SignalRService } from '@/services/signalr.service';
 
 const emit = defineEmits<{
   openChat: [userId: number, userName: string, isOnline: boolean];
@@ -121,7 +122,7 @@ const conversations = ref<Conversation[]>([]);
 const loading = ref(true);
 const totalUnreadCount = ref(0);
 const busyUserIds = ref<Set<number>>(new Set());
-let signalRConnection: any = null;
+let signalRService: SignalRService | null = null;
 
 const isBusy = (userId: number): boolean => busyUserIds.value.has(userId);
 
@@ -138,12 +139,12 @@ const refreshConversations = async () => {
 };
 
 const refreshBusyStatuses = async () => {
-  if (!signalRConnection) return;
+  if (!signalRService) return;
 
   const busy = new Set<number>();
   for (const conversation of conversations.value) {
     try {
-      if (await signalRConnection.invoke('GetCallStatus', conversation.otherUser.id)) {
+      if (await signalRService.getCallStatus(conversation.otherUser.id)) {
         busy.add(conversation.otherUser.id);
       }
     } catch (error) {
@@ -197,33 +198,13 @@ const handleReceiveMessage = (_message: any) => {
 // Setup SignalR connection for real-time updates
 const setupSignalR = async () => {
   try {
-    const { HubConnectionBuilder, LogLevel } = await import('@microsoft/signalr');
-    
-    signalRConnection = new HubConnectionBuilder()
-      .withUrl('/videocallhub', {
-        withCredentials: true
-      })
-      .withAutomaticReconnect()
-      .configureLogging(LogLevel.Information)
-      .build();
+    signalRService = await signalRManager.acquire();
 
-    signalRConnection.on('UserOnlineStatusChanged', handleUserOnlineStatusChanged);
-    signalRConnection.on('UserBusyStatusChanged', handleUserBusyStatusChanged);
-    signalRConnection.on('ReceiveMessage', handleReceiveMessage);
+    signalRService.on('UserOnlineStatusChanged', handleUserOnlineStatusChanged);
+    signalRService.on('UserBusyStatusChanged', handleUserBusyStatusChanged);
+    signalRService.on('ReceiveMessage', handleReceiveMessage);
 
-    await signalRConnection.start();
     console.log('SignalR connected for conversations list');
-    
-    // Register chat user (re-register after every reconnect, connection id changes)
-    const register = async () => {
-      const user = authService.getUser();
-      if (user) {
-        await signalRConnection.invoke('RegisterChatUser', user.id);
-      }
-    };
-
-    signalRConnection.onreconnected(register);
-    await register();
   } catch (error) {
     console.error('Failed to setup SignalR:', error);
   }
@@ -234,15 +215,12 @@ onMounted(async () => {
   await setupSignalR();
   
   // Refresh periodically for other updates
-  setInterval(refreshConversations, 30000); // Every 30 seconds instead of 10
+  setInterval(refreshConversations, 30000);
 });
 
 onUnmounted(async () => {
-  if (signalRConnection) {
-    signalRConnection.off('UserOnlineStatusChanged', handleUserOnlineStatusChanged);
-    signalRConnection.off('UserBusyStatusChanged', handleUserBusyStatusChanged);
-    signalRConnection.off('ReceiveMessage', handleReceiveMessage);
-    await signalRConnection.stop();
+  if (signalRService) {
+    signalRManager.release();
   }
 });
 

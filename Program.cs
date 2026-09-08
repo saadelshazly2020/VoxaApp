@@ -20,9 +20,16 @@ builder.Services.AddSignalR();
 builder.Services.AddControllers();
 
 // Add Authentication
-var jwtKey = builder.Configuration["Jwt:Key"] ?? "your-secret-key-change-this-in-production-environment";
+var jwtKey = builder.Configuration["Jwt:Key"];
 var jwtIssuer = builder.Configuration["Jwt:Issuer"] ?? "VideoChatingApp";
 var jwtAudience = builder.Configuration["Jwt:Audience"] ?? "VideoChatingAppUsers";
+
+if (string.IsNullOrWhiteSpace(jwtKey) || jwtKey.Length < 32)
+{
+    throw new InvalidOperationException(
+        "JWT signing key must be set via Jwt:Key in config or Jwt__Key environment variable. " +
+        "It must be at least 32 characters. Generate one with: openssl rand -base64 32");
+}
 
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(options =>
@@ -58,6 +65,7 @@ builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddScoped<IFriendshipService, FriendshipService>();
 builder.Services.AddScoped<IChatService, ChatService>();
 builder.Services.AddScoped<IPostService, PostService>();
+builder.Services.AddScoped<IPushNotificationService, PushNotificationService>();
 builder.Services.AddSingleton<IUserManager, UserManager>();
 builder.Services.AddSingleton<IRoomManager, RoomManager>();
 
@@ -137,5 +145,8 @@ app.UseSpa(spa =>
 
 // Fallback to index.html for SPA routing (when proxy is not used)
 //app.MapFallbackToFile("index.html");
-
+// Run once to generate keys:
+var keys = WebPush.VapidHelper.GenerateVapidKeys();
+Console.WriteLine(keys.PublicKey);
+Console.WriteLine(keys.PrivateKey);
 app.Run();

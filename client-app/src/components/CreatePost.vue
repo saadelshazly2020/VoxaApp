@@ -101,7 +101,7 @@ const handleSubmit = async () => {
   try {
     const result = await postsService.createPost(
       postContent.value.trim(),
-      imageUrl.value.trim() || undefined
+      imageUrl.value.trim() ? [imageUrl.value.trim()] : undefined
     );
 
     if (result.success && result.post) {

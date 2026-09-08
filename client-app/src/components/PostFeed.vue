@@ -15,11 +15,38 @@
             class="w-full resize-none rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white transition"
             @keydown.ctrl.enter="submitPost"
           />
+
+          <!-- Image Previews -->
+          <div v-if="imagePreviews.length > 0" class="flex gap-2 mt-2 flex-wrap">
+            <div v-for="(preview, idx) in imagePreviews" :key="idx" class="relative group">
+              <img :src="preview" class="w-20 h-20 object-cover rounded-lg border border-gray-200" />
+              <button
+                @click="removeImage(idx)"
+                class="absolute -top-1.5 -right-1.5 w-5 h-5 bg-red-500 text-white rounded-full text-xs flex items-center justify-center opacity-0 group-hover:opacity-100 transition"
+              >&times;</button>
+            </div>
+          </div>
+
           <div class="flex items-center justify-between mt-2">
-          <span class="text-xs text-gray-400">{{ newPostContent.length }}/2000 | Ctrl+Enter to post</span>
+            <div class="flex items-center gap-2">
+              <label class="cursor-pointer p-1.5 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition" title="Add image">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                </svg>
+                <input
+                  type="file"
+                  accept="image/*"
+                  multiple
+                  class="hidden"
+                  @change="handleImageSelect"
+                  ref="fileInputRef"
+                />
+              </label>
+              <span class="text-xs text-gray-400">{{ newPostContent.length }}/2000 | Ctrl+Enter to post</span>
+            </div>
             <button
               @click="submitPost"
-              :disabled="!newPostContent.trim() || posting"
+              :disabled="(!newPostContent.trim() && selectedImages.length === 0) || posting"
               class="px-5 py-2 bg-gradient-to-r from-blue-600 to-purple-600 text-white text-sm font-semibold rounded-lg hover:shadow-md transition disabled:opacity-50 disabled:cursor-not-allowed"
             >
             {{ posting ? 'Posting...' : 'Post' }}
@@ -72,6 +99,9 @@
 import { ref, onMounted, onUnmounted, computed } from 'vue';
 import { postsService, type Post } from '@/services/posts.service';
 import { authService } from '@/services/auth.service';
+import { uploadService } from '@/services/upload.service';
+import { signalRManager } from '@/services/signalr-manager';
+import type { SignalRService } from '@/services/signalr.service';
 import PostCard from './PostCard.vue';
 
 const PAGE_SIZE = 20;
@@ -83,7 +113,12 @@ const posting = ref(false);
 const newPostContent = ref('');
 const hasMore = ref(true);
 const currentUser = computed(() => authService.getUser());
-let signalRConn: any = null;
+let signalRService: SignalRService | null = null;
+
+// Image upload state
+const fileInputRef = ref<HTMLInputElement>();
+const selectedImages = ref<File[]>([]);
+const imagePreviews = ref<string[]>([]);
 
 // ?? Load ???????????????????????????????????????????????????????????????????
 const loadFeed = async () => {
@@ -102,16 +137,57 @@ const loadMore = async () => {
   loadingMore.value = false;
 };
 
-// ?? Create ?????????????????????????????????????????????????????????????????
+// Create post
 const submitPost = async () => {
-  if (!newPostContent.value.trim() || posting.value) return;
+  if ((!newPostContent.value.trim() && selectedImages.value.length === 0) || posting.value) return;
   posting.value = true;
-  const result = await postsService.createPost(newPostContent.value.trim());
-  if (result.success && result.post) {
-    posts.value.unshift(result.post);
-    newPostContent.value = '';
+
+  try {
+    // Upload images first
+    let imageUrls: string[] = [];
+    if (selectedImages.value.length > 0) {
+      const results = await uploadService.uploadImages(selectedImages.value);
+      imageUrls = results.map(r => r.url);
+    }
+
+    const result = await postsService.createPost(newPostContent.value.trim(), imageUrls);
+    if (result.success && result.post) {
+      posts.value.unshift(result.post);
+      newPostContent.value = '';
+      clearImageSelection();
+    }
+  } catch (error) {
+    console.error('Failed to create post:', error);
   }
   posting.value = false;
+};
+
+const handleImageSelect = (event: Event) => {
+  const input = event.target as HTMLInputElement;
+  if (!input.files) return;
+
+  const newFiles = Array.from(input.files).slice(0, 4 - selectedImages.value.length);
+  for (const file of newFiles) {
+    if (file.size > 10 * 1024 * 1024) {
+      alert(`${file.name} exceeds 10 MB limit`);
+      continue;
+    }
+    selectedImages.value.push(file);
+    imagePreviews.value.push(URL.createObjectURL(file));
+  }
+  input.value = '';
+};
+
+const removeImage = (index: number) => {
+  URL.revokeObjectURL(imagePreviews.value[index]);
+  selectedImages.value.splice(index, 1);
+  imagePreviews.value.splice(index, 1);
+};
+
+const clearImageSelection = () => {
+  imagePreviews.value.forEach(url => URL.revokeObjectURL(url));
+  selectedImages.value = [];
+  imagePreviews.value = [];
 };
 
 // ?? Event handlers from PostCard ???????????????????????????????????????????
@@ -149,73 +225,67 @@ const handleCommentDeleted = (postId: number, commentId: number) => {
   }
 };
 
-// ?? SignalR real-time ??????????????????????????????????????????????????????
+// SignalR real-time handlers
+const onNewPost = (post: Post) => {
+  if (post.authorId !== currentUser.value?.id) {
+    posts.value.unshift(post);
+  }
+};
+
+const onPostUpdated = (updated: Post) => {
+  const idx = posts.value.findIndex(p => p.id === updated.id);
+  if (idx !== -1) posts.value[idx] = { ...posts.value[idx], ...updated };
+};
+
+const onPostDeleted = (postId: number) => {
+  posts.value = posts.value.filter(p => p.id !== postId);
+};
+
+const onPostReactionUpdated = (payload: { postId: number; reaction: any }) => {
+  const post = posts.value.find(p => p.id === payload.postId);
+  if (post) {
+    const type: string = payload.reaction.type;
+    post.reactionCounts[type] = (post.reactionCounts[type] ?? 0) + 1;
+    post.totalReactions = Object.values(post.reactionCounts).reduce((s, v) => s + v, 0);
+  }
+};
+
+const onPostReactionRemoved = (payload: { postId: number; userId: number }) => {
+  const post = posts.value.find(p => p.id === payload.postId);
+  if (post) {
+    post.totalReactions = Math.max(0, post.totalReactions - 1);
+  }
+};
+
+const onNewComment = (payload: { postId: number; comment: any }) => {
+  const post = posts.value.find(p => p.id === payload.postId);
+  if (post && !post.comments.some(c => c.id === payload.comment.id)) {
+    post.comments.push(payload.comment);
+    post.totalComments++;
+  }
+};
+
+const onCommentDeleted = (commentId: number) => {
+  for (const post of posts.value) {
+    const before = post.comments.length;
+    post.comments = post.comments.filter(c => c.id !== commentId);
+    if (post.comments.length < before) post.totalComments = Math.max(0, post.totalComments - 1);
+  }
+};
+
 const setupSignalR = async () => {
   try {
-    const { HubConnectionBuilder, LogLevel } = await import('@microsoft/signalr');
-    signalRConn = new HubConnectionBuilder()
-      .withUrl('/videocallhub', { withCredentials: true })
-      .withAutomaticReconnect()
-      .configureLogging(LogLevel.Warning)
-      .build();
+    signalRService = await signalRManager.acquire();
 
-    signalRConn.on('NewPost', (post: Post) => {
-      // Don't add own posts (already added optimistically)
-      if (post.authorId !== currentUser.value?.id) {
-        posts.value.unshift(post);
-      }
-    });
+    signalRService.on('NewPost', onNewPost);
+    signalRService.on('PostUpdated', onPostUpdated);
+    signalRService.on('PostDeleted', onPostDeleted);
+    signalRService.on('PostReactionUpdated', onPostReactionUpdated);
+    signalRService.on('PostReactionRemoved', onPostReactionRemoved);
+    signalRService.on('NewComment', onNewComment);
+    signalRService.on('CommentDeleted', onCommentDeleted);
 
-    signalRConn.on('PostUpdated', (updated: Post) => {
-      const idx = posts.value.findIndex(p => p.id === updated.id);
-      if (idx !== -1) posts.value[idx] = { ...posts.value[idx], ...updated };
-    });
-
-    signalRConn.on('PostDeleted', (postId: number) => {
-      posts.value = posts.value.filter(p => p.id !== postId);
-    });
-
-    signalRConn.on('PostReactionUpdated', (payload: { postId: number; reaction: any }) => {
-      const post = posts.value.find(p => p.id === payload.postId);
-      if (post) {
-        const type: string = payload.reaction.type;
-        post.reactionCounts[type] = (post.reactionCounts[type] ?? 0) + 1;
-        post.totalReactions = Object.values(post.reactionCounts).reduce((s, v) => s + v, 0);
-      }
-    });
-
-    signalRConn.on('PostReactionRemoved', (payload: { postId: number; userId: number }) => {
-      const post = posts.value.find(p => p.id === payload.postId);
-      if (post) {
-        post.totalReactions = Math.max(0, post.totalReactions - 1);
-      }
-    });
-
-    signalRConn.on('NewComment', (payload: { postId: number; comment: any }) => {
-      const post = posts.value.find(p => p.id === payload.postId);
-      if (post && !post.comments.some(c => c.id === payload.comment.id)) {
-        post.comments.push(payload.comment);
-        post.totalComments++;
-      }
-    });
-
-    signalRConn.on('CommentDeleted', (commentId: number) => {
-      for (const post of posts.value) {
-        const before = post.comments.length;
-        post.comments = post.comments.filter(c => c.id !== commentId);
-        if (post.comments.length < before) post.totalComments = Math.max(0, post.totalComments - 1);
-      }
-    });
-
-    await signalRConn.start();
-
-    const register = async () => {
-      const user = authService.getUser();
-      if (user) await signalRConn.invoke('RegisterChatUser', user.id);
-    };
-
-    signalRConn.onreconnected(register);
-    await register();
+    console.log('SignalR connected for posts feed');
   } catch (err) {
     console.error('SignalR setup failed for posts feed:', err);
   }
@@ -227,6 +297,15 @@ onMounted(async () => {
 });
 
 onUnmounted(async () => {
-  if (signalRConn) await signalRConn.stop();
+  if (signalRService) {
+    signalRService.off('NewPost', onNewPost);
+    signalRService.off('PostUpdated', onPostUpdated);
+    signalRService.off('PostDeleted', onPostDeleted);
+    signalRService.off('PostReactionUpdated', onPostReactionUpdated);
+    signalRService.off('PostReactionRemoved', onPostReactionRemoved);
+    signalRService.off('NewComment', onNewComment);
+    signalRService.off('CommentDeleted', onCommentDeleted);
+    signalRManager.release();
+  }
 });
 </script>

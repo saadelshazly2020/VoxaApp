@@ -1,8 +1,8 @@
 import { reactive, ref } from 'vue';
-import { SignalRService } from '@/services/signalr.service';
 import { WebRTCService } from '@/services/webrtc.service';
 import { authService } from '@/services/auth.service';
-import { getHubUrl } from '@/utils/config';
+import { signalRManager } from '@/services/signalr-manager';
+import type { SignalRService } from '@/services/signalr.service';
 
 export type CallState = 'idle' | 'ringing-out' | 'ringing-in' | 'in-call';
 
@@ -18,7 +18,6 @@ const isVideoEnabled = ref(true);
 const statusMessage = ref('');
 const errorMessage = ref('');
 
-let signalRService: SignalRService | null = null;
 let webRTCService: WebRTCService | null = null;
 let ringTimeout: number | null = null;
 let messageTimeout: number | null = null;
@@ -83,7 +82,6 @@ function attachWebRTCHandlers(service: WebRTCService) {
   });
 
   service.on('incomingCall', (fromUserId: string) => {
-    // Ignore extra rings while already calling / in a call
     if (state.value !== 'idle') return;
     peerId.value = fromUserId;
     state.value = 'ringing-in';
@@ -119,23 +117,15 @@ function attachWebRTCHandlers(service: WebRTCService) {
   });
 }
 
-async function register() {
-  const currentUser = authService.getUser();
-  if (currentUser && signalRService) {
-    await signalRService.registerChatUser(currentUser.id);
-  }
-}
-
 async function connect() {
-  if (signalRService) return;
+  if (webRTCService) return;
 
   const currentUser = authService.getUser();
   if (!currentUser) return;
 
   try {
-    signalRService = new SignalRService(getHubUrl());
+    const signalRService: SignalRService = await signalRManager.acquire();
 
-    signalRService.on('reconnected', register);
     signalRService.on('Error', (message: string) => {
       showError(String(message));
       if (state.value === 'ringing-out') {
@@ -143,12 +133,8 @@ async function connect() {
       }
     });
 
-    await signalRService.start();
-
     webRTCService = new WebRTCService(signalRService, String(currentUser.id));
     attachWebRTCHandlers(webRTCService);
-
-    await register();
   } catch (error) {
     console.error('Failed to start the call service:', error);
     showError('Could not connect to the call service');
@@ -261,11 +247,7 @@ async function dispose() {
     webRTCService = null;
   }
 
-  if (signalRService) {
-    await signalRService.stop();
-    signalRService = null;
-  }
-
+  signalRManager.release();
   reset();
 }
 

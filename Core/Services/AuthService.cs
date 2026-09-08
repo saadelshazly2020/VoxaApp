@@ -157,8 +157,9 @@ public class AuthService : IAuthService
 
     public string GenerateJwtToken(User user, IConfiguration config)
     {
-        var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(config["Jwt:Key"] ?? "your-secret-key-change-this-in-production-environment"));
-        var credentials = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
+        var key = config["Jwt:Key"]
+            ?? throw new InvalidOperationException("Jwt:Key is not configured.");
+        var credentials = new SigningCredentials(new SymmetricSecurityKey(Encoding.UTF8.GetBytes(key)), SecurityAlgorithms.HmacSha256);
 
         var claims = new List<System.Security.Claims.Claim>
         {

@@ -64,12 +64,12 @@ export class PostsService {
     }
   }
 
-  async createPost(content: string, imageUrl?: string): Promise<{ success: boolean; message: string; post?: Post }> {
+  async createPost(content: string, imageUrls?: string[]): Promise<{ success: boolean; message: string; post?: Post }> {
     try {
       const res = await fetch('/api/posts', {
         method: 'POST',
         headers: this.getHeaders(),
-        body: JSON.stringify({ content, imageUrl })
+        body: JSON.stringify({ content, imageUrl: imageUrls?.[0] })
       });
       const data = await res.json();
       if (!res.ok) return { success: false, message: data.message };

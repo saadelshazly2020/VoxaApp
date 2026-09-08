@@ -14,12 +14,14 @@ public class ChatController : ControllerBase
 {
     private readonly IChatService _chatService;
     private readonly IHubContext<VideoCallHub> _hubContext;
+    private readonly IPushNotificationService _pushService;
     private readonly ILogger<ChatController> _logger;
 
-    public ChatController(IChatService chatService, IHubContext<VideoCallHub> hubContext, ILogger<ChatController> logger)
+    public ChatController(IChatService chatService, IHubContext<VideoCallHub> hubContext, IPushNotificationService pushService, ILogger<ChatController> logger)
     {
         _chatService = chatService;
         _hubContext = hubContext;
+        _pushService = pushService;
         _logger = logger;
     }
 
@@ -80,7 +82,19 @@ public class ChatController : ControllerBase
             }
             else
             {
-                _logger.LogInformation("User {ReceiverId} is not connected to SignalR, message will be delivered on next login", request.ReceiverId);
+                _logger.LogInformation("User {ReceiverId} is not connected to SignalR, sending push notification", request.ReceiverId);
+
+                // Send push notification for offline users
+                var senderName = chatMessage.Sender.DisplayName ?? chatMessage.Sender.Username;
+                var preview = chatMessage.Content.Length > 100
+                    ? chatMessage.Content[..100] + "..."
+                    : chatMessage.Content;
+
+                await _pushService.SendPushAsync(
+                    request.ReceiverId,
+                    senderName,
+                    preview,
+                    new { type = "message", senderId = senderId });
             }
         }
         catch (Exception ex)

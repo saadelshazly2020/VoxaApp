@@ -33,6 +33,16 @@ export interface SentRequest {
   createdAt: string;
 }
 
+export interface SearchUserResult {
+  id: number;
+  username: string;
+  displayName: string;
+  isOnline: boolean;
+  profilePictureUrl?: string;
+  isFriend: boolean;
+  hasPendingRequest: boolean;
+}
+
 export class FriendshipService {
   private token = authService.getToken();
 
@@ -181,21 +191,21 @@ export class FriendshipService {
     }
   }
 
-  async searchUser(username: string): Promise<any> {
+  async searchUsers(query: string): Promise<SearchUserResult[]> {
     try {
-      const response = await fetch(`/api/friendship/search/${username}`, {
+      const response = await fetch(`/api/friendship/search/${encodeURIComponent(query)}`, {
         headers: this.getHeaders()
       });
 
       if (!response.ok) {
-        return null;
+        return [];
       }
 
       const data = await response.json();
-      return data.user;
+      return data.users || [];
     } catch (error) {
-      console.error('Error searching user:', error);
-      return null;
+      console.error('Error searching users:', error);
+      return [];
     }
   }
 }

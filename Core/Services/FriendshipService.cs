@@ -20,6 +20,7 @@ public interface IFriendshipService
     Task<List<FriendshipRequest>> GetSentRequestsAsync(int userId);
     Task<bool> AreFriendsAsync(int userId1, int userId2);
     Task<FriendshipRequest?> GetRequestAsync(int senderId, int receiverId);
+    Task<List<User>> SearchUsersAsync(string query, int currentUserId);
 }
 
 public class FriendshipService : IFriendshipService
@@ -244,5 +245,27 @@ public class FriendshipService : IFriendshipService
                 fr.SenderId == senderId && 
                 fr.ReceiverId == receiverId && 
                 fr.Status == FriendshipRequestStatus.Pending);
+    }
+
+    public async Task<List<User>> SearchUsersAsync(string query, int currentUserId)
+    {
+        try
+        {
+            if (string.IsNullOrWhiteSpace(query))
+                return new List<User>();
+
+            var lowerQuery = query.ToLower();
+            return await _context.Users
+                .Where(u => u.Id != currentUserId &&
+                    (u.Username.ToLower().Contains(lowerQuery) ||
+                     (u.DisplayName != null && u.DisplayName.ToLower().Contains(lowerQuery))))
+                .Take(10)
+                .ToListAsync();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error searching users with query {Query}", query);
+            return new List<User>();
+        }
     }
 }

@@ -26,8 +26,22 @@ private remoteDescriptionSet: Map<string, boolean> = new Map();
         urls: [
           'stun:stun.services.mozilla.com:3478'
         ]
+      },
+      // Free TURN servers (Open Relay) for NAT traversal
+      // ~15-20% of users are behind symmetric NATs and need TURN relay
+      {
+        urls: [
+          'turn:openrelay.metered.ca:80',
+          'turn:openrelay.metered.ca:443',
+          'turn:openrelay.metered.ca:443?transport=tcp'
+        ],
+        username: 'openrelayproject',
+        credential: 'openrelayproject'
       }
-    ]
+    ],
+    // Prefer relay (TURN) for more reliable connections
+    iceTransportPolicy: 'all',
+    iceCandidatePoolSize: 2
   };
 
   constructor(signalRService: SignalRService, _userId: string) {

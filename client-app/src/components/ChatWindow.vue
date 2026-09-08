@@ -209,6 +209,8 @@
 import { ref, computed, watch, nextTick, onMounted, onUnmounted } from 'vue';
 import { chatService, type ChatMessage } from '@/services/chat.service';
 import { authService } from '@/services/auth.service';
+import { signalRManager } from '@/services/signalr-manager';
+import type { SignalRService } from '@/services/signalr.service';
 
 const props = defineProps<{
   userId: number;
@@ -236,7 +238,7 @@ const showDeleteDialog = ref(false);
 const messageToDelete = ref<number | null>(null);
 const deleting = ref(false);
 const scrolledToBottom = ref(true);
-let signalRConnection: any = null;
+let signalRService: SignalRService | null = null;
 
 const loadMessages = async (append: boolean = false) => {
   if (append) {
@@ -404,7 +406,7 @@ const startCall = () => {
 
 const refreshPeerBusyStatus = async () => {
   try {
-    peerBusy.value = await signalRConnection.invoke('GetCallStatus', props.userId);
+    peerBusy.value = await signalRService?.getCallStatus(props.userId) ?? false;
   } catch (error) {
     console.error('Failed to get call status:', error);
   }
@@ -430,47 +432,27 @@ const getCurrentUserId = (): number => {
 // Setup SignalR connection for real-time messages
 const setupSignalR = async () => {
   try {
-    const { HubConnectionBuilder, LogLevel } = await import('@microsoft/signalr');
-    
-    signalRConnection = new HubConnectionBuilder()
-      .withUrl('/videocallhub', {
-        withCredentials: true
-      })
-      .withAutomaticReconnect()
-      .configureLogging(LogLevel.Information)
-      .build();
+    signalRService = await signalRManager.acquire();
 
-    signalRConnection.on('ReceiveMessage', handleNewMessage);
-    signalRConnection.on('MessagesRead', handleMessagesRead);
+    signalRService.on('ReceiveMessage', handleNewMessage);
+    signalRService.on('MessagesRead', handleMessagesRead);
 
-    signalRConnection.on('UserOnlineStatusChanged', (userId: number, isOnline: boolean) => {
+    signalRService.on('UserOnlineStatusChanged', (userId: number, isOnline: boolean) => {
       if (userId === props.userId) {
         peerOnline.value = isOnline;
         emit('onlineStatusChanged', userId, isOnline);
       }
     });
 
-    signalRConnection.on('UserBusyStatusChanged', (userId: number, isBusy: boolean) => {
+    signalRService.on('UserBusyStatusChanged', (userId: number, isBusy: boolean) => {
       if (userId === props.userId) {
         peerBusy.value = isBusy;
         emit('busyStatusChanged', userId, isBusy);
       }
     });
 
-    await signalRConnection.start();
     await refreshPeerBusyStatus();
     console.log('SignalR connected for chat');
-    
-    // Register chat user (re-register after every reconnect, connection id changes)
-    const register = async () => {
-      const currentUserId = getCurrentUserId();
-      if (currentUserId) {
-        await signalRConnection.invoke('RegisterChatUser', currentUserId);
-      }
-    };
-
-    signalRConnection.onreconnected(register);
-    await register();
   } catch (error) {
     console.error('Failed to setup SignalR:', error);
   }
@@ -487,7 +469,7 @@ watch(() => props.isOnline, (value) => {
 
 watch(() => props.userId, () => {
   peerBusy.value = false;
-  if (signalRConnection) refreshPeerBusyStatus();
+  if (signalRService) refreshPeerBusyStatus();
 });
 
 onMounted(async () => {
@@ -496,12 +478,8 @@ onMounted(async () => {
 });
 
 onUnmounted(async () => {
-  if (signalRConnection) {
-    signalRConnection.off('ReceiveMessage', handleNewMessage);
-    signalRConnection.off('MessagesRead', handleMessagesRead);
-    signalRConnection.off('UserOnlineStatusChanged');
-    signalRConnection.off('UserBusyStatusChanged');
-    await signalRConnection.stop();
+  if (signalRService) {
+    signalRManager.release();
   }
 });
 </script>

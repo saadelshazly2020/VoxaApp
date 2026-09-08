@@ -18,6 +18,7 @@ public class ApplicationDbContext : DbContext
     public DbSet<Post> Posts { get; set; } = null!;
     public DbSet<PostReaction> PostReactions { get; set; } = null!;
     public DbSet<PostComment> PostComments { get; set; } = null!;
+    public DbSet<PushSubscription> PushSubscriptions { get; set; } = null!;
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
