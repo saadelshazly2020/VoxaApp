@@ -36,9 +36,10 @@
       >
         <div class="flex items-center gap-3 flex-1">
           <!-- Avatar -->
-          <div class="relative">
-            <div class="w-10 h-10 bg-gradient-to-br from-blue-400 to-purple-500 rounded-full flex items-center justify-center text-white font-bold">
-              {{ friend.username[0].toUpperCase() }}
+          <button @click="emit('viewProfile', friend.id)" class="relative flex-shrink-0">
+            <div class="w-10 h-10 rounded-full overflow-hidden bg-gradient-to-br from-blue-400 to-purple-500 flex items-center justify-center text-white font-bold">
+              <img v-if="(friend as any).profilePictureUrl" :src="(friend as any).profilePictureUrl" class="w-full h-full object-cover" />
+              <span v-else>{{ friend.username[0].toUpperCase() }}</span>
             </div>
             <!-- Online Status -->
             <span
@@ -48,15 +49,15 @@
               ]"
               :title="friend.isOnline ? 'Online' : 'Offline'"
             />
-          </div>
+          </button>
 
           <!-- User Info -->
-          <div class="flex-1">
-            <p class="font-semibold text-gray-800">{{ friend.displayName || friend.username }}</p>
+          <button @click="emit('viewProfile', friend.id)" class="flex-1 text-left">
+            <p class="font-semibold text-gray-800 hover:text-blue-600 transition">{{ friend.displayName || friend.username }}</p>
             <p class="text-xs text-gray-500">
               {{ friend.isOnline ? 'Online' : `Last seen ${formatTime(friend.lastSeen)}` }}
             </p>
-          </div>
+          </button>
         </div>
 
         <!-- Actions -->
@@ -137,6 +138,7 @@ import { friendshipService, type Friend } from '@/services/friendship.service';
 const emit = defineEmits<{
   callFriend: [friendId: number, friendName: string];
   chatFriend: [friendId: number, friendName: string, isOnline: boolean];
+  viewProfile: [userId: number];
 }>();
 
 const friends = ref<Friend[]>([]);

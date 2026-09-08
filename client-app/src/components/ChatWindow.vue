@@ -108,13 +108,23 @@
 
             <!-- Attachment (if any) -->
             <div v-if="message.attachmentUrl && !message.isDeleted" class="mt-2">
+              <img
+                v-if="isImageAttachment(message.attachmentUrl)"
+                :src="message.attachmentUrl"
+                class="rounded-lg max-w-full max-h-60 object-cover cursor-pointer hover:opacity-90 transition"
+                @click="openImage(message.attachmentUrl)"
+              />
               <a
+                v-else
                 :href="message.attachmentUrl"
                 target="_blank"
-                class="text-sm underline"
+                class="text-sm underline flex items-center gap-1"
                 :class="message.isSentByMe ? 'text-blue-200' : 'text-blue-600'"
               >
-                &#128206; Attachment
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
+                </svg>
+                {{ message.attachmentType || 'Attachment' }}
               </a>
             </div>
 
@@ -152,7 +162,29 @@
 
     <!-- Message Input -->
     <div class="border-t border-gray-200 p-3 sm:p-4 bg-white flex-shrink-0 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:pb-4">
+      <!-- Attachment Preview -->
+      <div v-if="attachmentPreview" class="mb-2 flex items-center gap-2 p-2 bg-gray-50 rounded-lg">
+        <img :src="attachmentPreview" class="w-16 h-16 object-cover rounded-lg" />
+        <div class="flex-1 min-w-0">
+          <p class="text-xs text-gray-500 truncate">{{ attachmentFile?.name }}</p>
+          <p class="text-xs text-gray-400">{{ attachmentFile ? (attachmentFile.size / 1024).toFixed(0) + ' KB' : '' }}</p>
+        </div>
+        <button @click="clearAttachment" class="p-1 hover:bg-gray-200 rounded-full transition">
+          <svg class="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+          </svg>
+        </button>
+      </div>
+
       <div class="flex gap-2">
+        <!-- Attachment Button -->
+        <label class="p-2 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded-full transition cursor-pointer flex-shrink-0" title="Send image">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+          </svg>
+          <input type="file" accept="image/*" class="hidden" @change="handleAttachmentSelect" ref="fileInputRef" />
+        </label>
+
         <input
           v-model="newMessage"
           type="text"
@@ -164,7 +196,7 @@
         />
         <button
           @click="sendMessage"
-          :disabled="!newMessage.trim() || sending"
+          :disabled="(!newMessage.trim() && !attachmentFile) || sending"
           class="px-4 sm:px-6 py-2 bg-gradient-to-r from-blue-600 to-purple-600 text-white font-semibold rounded-full hover:shadow-lg transition disabled:opacity-50 flex-shrink-0"
         >
           {{ sending ? '...' : 'Send' }}
@@ -209,6 +241,7 @@
 import { ref, computed, watch, nextTick, onMounted, onUnmounted } from 'vue';
 import { chatService, type ChatMessage } from '@/services/chat.service';
 import { authService } from '@/services/auth.service';
+import { uploadService } from '@/services/upload.service';
 import { signalRManager } from '@/services/signalr-manager';
 import type { SignalRService } from '@/services/signalr.service';
 
@@ -238,6 +271,9 @@ const showDeleteDialog = ref(false);
 const messageToDelete = ref<number | null>(null);
 const deleting = ref(false);
 const scrolledToBottom = ref(true);
+const fileInputRef = ref<HTMLInputElement>();
+const attachmentFile = ref<File | null>(null);
+const attachmentPreview = ref('');
 let signalRService: SignalRService | null = null;
 
 const loadMessages = async (append: boolean = false) => {
@@ -269,29 +305,73 @@ const loadMessages = async (append: boolean = false) => {
 };
 
 const sendMessage = async () => {
-  if (!newMessage.value.trim() || sending.value) return;
+  if ((!newMessage.value.trim() && !attachmentFile.value) || sending.value) return;
 
   sending.value = true;
   const messageContent = newMessage.value.trim();
   newMessage.value = '';
 
-  const result = await chatService.sendMessage(props.userId, messageContent);
+  try {
+    let attachmentUrl: string | undefined;
+    let attachmentType: string | undefined;
 
-  if (result.success && result.chatMessage) {
-    // Add sent message with isSentByMe flag
-    const sentMessage = {
-      ...result.chatMessage,
-      isSentByMe: true
-    };
-    messages.value.push(sentMessage);
-    await nextTick();
-    scrollToBottom();
-  } else {
-    alert('Failed to send message: ' + result.message);
+    if (attachmentFile.value) {
+      const result = await uploadService.uploadAttachment(attachmentFile.value);
+      attachmentUrl = result.url;
+      attachmentType = result.originalName;
+      clearAttachment();
+    }
+
+    const result = await chatService.sendMessage(props.userId, messageContent || ' ', attachmentUrl, attachmentType);
+
+    if (result.success && result.chatMessage) {
+      // Add sent message with isSentByMe flag
+      const sentMessage = {
+        ...result.chatMessage,
+        isSentByMe: true
+      };
+      messages.value.push(sentMessage);
+      await nextTick();
+      scrollToBottom();
+    } else {
+      alert('Failed to send message: ' + result.message);
+      newMessage.value = messageContent; // Restore message
+    }
+  } catch (error) {
+    console.error('Failed to send message:', error);
     newMessage.value = messageContent; // Restore message
   }
 
   sending.value = false;
+};
+
+const handleAttachmentSelect = (event: Event) => {
+  const input = event.target as HTMLInputElement;
+  const file = input.files?.[0];
+  if (!file) return;
+
+  if (file.size > 10 * 1024 * 1024) {
+    alert('File must be under 10 MB');
+    return;
+  }
+
+  attachmentFile.value = file;
+  attachmentPreview.value = URL.createObjectURL(file);
+  input.value = '';
+};
+
+const clearAttachment = () => {
+  if (attachmentPreview.value) URL.revokeObjectURL(attachmentPreview.value);
+  attachmentFile.value = null;
+  attachmentPreview.value = '';
+};
+
+const isImageAttachment = (url: string): boolean => {
+  return /\.(jpg|jpeg|png|gif|webp)(\?.*)?$/i.test(url);
+};
+
+const openImage = (url: string) => {
+  window.open(url, '_blank');
 };
 
 const confirmDelete = (messageId: number) => {

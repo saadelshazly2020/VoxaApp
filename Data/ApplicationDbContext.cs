@@ -47,6 +47,9 @@ public class ApplicationDbContext : DbContext
             entity.Property(u => u.ProfilePictureUrl)
                 .HasMaxLength(500);
 
+            entity.Property(u => u.Bio)
+                .HasMaxLength(500);
+
             entity.Property(u => u.CreatedAt)
                 .IsRequired();
 

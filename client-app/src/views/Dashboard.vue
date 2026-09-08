@@ -21,12 +21,18 @@
               <p class="text-xs text-gray-500">@{{ currentUser?.username }}</p>
             </div>
 
-            <div class="relative">
-              <div class="w-10 h-10 bg-gradient-to-br from-blue-400 to-purple-500 rounded-full flex items-center justify-center text-white font-bold cursor-pointer">
-                {{ currentUser?.username?.[0]?.toUpperCase() }}
+            <button @click="showProfileEdit = true" class="relative group">
+              <div class="w-10 h-10 rounded-full overflow-hidden bg-gradient-to-br from-blue-400 to-purple-500 flex items-center justify-center text-white font-bold">
+                <img v-if="currentUser?.profilePictureUrl" :src="currentUser.profilePictureUrl" class="w-full h-full object-cover" />
+                <span v-else>{{ currentUser?.username?.[0]?.toUpperCase() }}</span>
               </div>
               <span class="absolute bottom-0 right-0 w-3 h-3 bg-green-500 rounded-full border-2 border-white"></span>
-            </div>
+              <span class="absolute inset-0 bg-black/30 rounded-full opacity-0 group-hover:opacity-100 flex items-center justify-center transition">
+                <svg class="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                </svg>
+              </span>
+            </button>
 
             <button
               @click="handleLogout"
@@ -84,6 +90,7 @@
             <FriendsList 
               @call-friend="handleCallFriend"
               @chat-friend="openChatWithFriend"
+              @view-profile="viewUserProfile"
             />
           </div>
 
@@ -288,6 +295,20 @@
 
     <!-- Incoming / outgoing / active call UI -->
     <CallOverlay />
+
+    <!-- Profile Modals -->
+    <ProfileEditModal
+      :show="showProfileEdit"
+      @close="showProfileEdit = false"
+      @updated="onProfileUpdated"
+    />
+    <UserProfileModal
+      :show="showUserProfile"
+      :user-id="viewedUserId"
+      @close="showUserProfile = false"
+      @open-chat="openChatWithFriend"
+      @call="(id, name) => handleCallFriend(id, name)"
+    />
   </div>
 </template>
 
@@ -304,6 +325,8 @@ import ConversationsList from '@/components/ConversationsList.vue';
 import ChatWindow from '@/components/ChatWindow.vue';
 import PostFeed from '@/components/PostFeed.vue';
 import CallOverlay from '@/components/CallOverlay.vue';
+import ProfileEditModal from '@/components/ProfileEditModal.vue';
+import UserProfileModal from '@/components/UserProfileModal.vue';
 import { useCall } from '@/composables/useCall';
 import { pushNotificationService } from '@/services/push-notification.service';
 
@@ -313,6 +336,9 @@ type TabId = 'friends' | 'chat' | 'requests' | 'search' | 'video' | 'posts';
 
 const activeTab = ref<TabId>('posts');
 const roomIdInput = ref('');
+const showProfileEdit = ref(false);
+const showUserProfile = ref(false);
+const viewedUserId = ref(0);
 
 const currentUser = computed(() => authService.getUser());
 const friendsCount = ref(0);
@@ -466,6 +492,15 @@ const joinRoom = () => {
   if (roomIdInput.value.trim()) {
     router.push(`/room/${roomIdInput.value.trim()}`);
   }
+};
+
+const onProfileUpdated = () => {
+  // Refresh current user data from localStorage (already updated by ProfileEditModal)
+};
+
+const viewUserProfile = (userId: number) => {
+  viewedUserId.value = userId;
+  showUserProfile.value = true;
 };
 
 onMounted(async () => {

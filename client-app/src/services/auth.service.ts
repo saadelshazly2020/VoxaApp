@@ -5,6 +5,8 @@ export interface AuthUser {
   username: string;
   email: string;
   displayName: string;
+  profilePictureUrl?: string;
+  bio?: string;
   isOnline: boolean;
 }
 

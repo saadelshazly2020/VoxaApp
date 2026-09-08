@@ -11,6 +11,7 @@ public class User
     public string PasswordHash { get; set; } = null!;
     public string? DisplayName { get; set; }
     public string? ProfilePictureUrl { get; set; }
+    public string? Bio { get; set; }
     public bool IsOnline { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime? LastSeen { get; set; }

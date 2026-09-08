@@ -60,6 +60,8 @@ public class AuthController : ControllerBase
                 user.Username,
                 user.Email,
                 user.DisplayName,
+                user.ProfilePictureUrl,
+                user.Bio,
                 user.IsOnline
             }
         });
