@@ -163,6 +163,7 @@ public class AuthService : IAuthService
 
         var claims = new List<System.Security.Claims.Claim>
         {
+            new System.Security.Claims.Claim(System.Security.Claims.ClaimTypes.NameIdentifier, user.Id.ToString()),
             new System.Security.Claims.Claim("userId", user.Id.ToString()),
             new System.Security.Claims.Claim("email", user.Email),
             new System.Security.Claims.Claim("username", user.Username)

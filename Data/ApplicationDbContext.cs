@@ -19,6 +19,12 @@ public class ApplicationDbContext : DbContext
     public DbSet<PostReaction> PostReactions { get; set; } = null!;
     public DbSet<PostComment> PostComments { get; set; } = null!;
     public DbSet<PushSubscription> PushSubscriptions { get; set; } = null!;
+    public DbSet<SubjectTag> SubjectTags { get; set; } = null!;
+    public DbSet<TeacherProfile> TeacherProfiles { get; set; } = null!;
+    public DbSet<TeacherSubject> TeacherSubjects { get; set; } = null!;
+    public DbSet<TeacherAvailability> TeacherAvailabilities { get; set; } = null!;
+    public DbSet<TutoringSession> TutoringSessions { get; set; } = null!;
+    public DbSet<TutoringReview> TutoringReviews { get; set; } = null!;
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -264,7 +270,80 @@ public class ApplicationDbContext : DbContext
                 .IsUnique();
 
             // Add index for better query performance
-            entity.HasIndex(c => c.LastMessageAt);
+            entity.HasIndex(f => f.LastMessageAt);
         });
+
+        // Configure SubjectTag
+        modelBuilder.Entity<SubjectTag>(entity =>
+        {
+            entity.HasKey(s => s.Id);
+            entity.Property(s => s.Name).IsRequired().HasMaxLength(100);
+            entity.HasIndex(s => s.Name).IsUnique();
+        });
+
+        // Configure TeacherProfile
+        modelBuilder.Entity<TeacherProfile>(entity =>
+        {
+            entity.HasKey(tp => tp.Id);
+            entity.HasOne(tp => tp.User).WithMany().HasForeignKey(tp => tp.UserId).OnDelete(DeleteBehavior.Cascade);
+            entity.HasIndex(tp => tp.UserId).IsUnique();
+            entity.HasIndex(tp => tp.IsAcceptingStudents);
+        });
+
+        // Configure TeacherSubject
+        modelBuilder.Entity<TeacherSubject>(entity =>
+        {
+            entity.HasKey(ts => ts.Id);
+            entity.HasOne(ts => ts.TeacherProfile).WithMany(tp => tp.Subjects).HasForeignKey(ts => ts.TeacherProfileId).OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne(ts => ts.SubjectTag).WithMany().HasForeignKey(ts => ts.SubjectTagId).OnDelete(DeleteBehavior.Cascade);
+            entity.HasIndex(ts => new { ts.TeacherProfileId, ts.SubjectTagId }).IsUnique();
+        });
+
+        // Configure TeacherAvailability
+        modelBuilder.Entity<TeacherAvailability>(entity =>
+        {
+            entity.HasKey(ta => ta.Id);
+            entity.HasOne(ta => ta.TeacherProfile).WithMany(tp => tp.AvailabilitySlots).HasForeignKey(ta => ta.TeacherProfileId).OnDelete(DeleteBehavior.Cascade);
+            entity.HasIndex(ta => new { ta.TeacherProfileId, ta.DayOfWeek });
+        });
+
+        // Configure TutoringSession
+        modelBuilder.Entity<TutoringSession>(entity =>
+        {
+            entity.HasKey(ts => ts.Id);
+            entity.HasOne(ts => ts.Teacher).WithMany().HasForeignKey(ts => ts.TeacherId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(ts => ts.Student).WithMany().HasForeignKey(ts => ts.StudentId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(ts => ts.SubjectTag).WithMany().HasForeignKey(ts => ts.SubjectTagId).OnDelete(DeleteBehavior.SetNull);
+            entity.HasIndex(ts => ts.TeacherId);
+            entity.HasIndex(ts => ts.StudentId);
+            entity.HasIndex(ts => ts.Status);
+            entity.HasIndex(ts => ts.ScheduledAt);
+        });
+
+        // Configure TutoringReview
+        modelBuilder.Entity<TutoringReview>(entity =>
+        {
+            entity.HasKey(tr => tr.Id);
+            entity.HasOne(tr => tr.Session).WithMany(s => s.Reviews).HasForeignKey(tr => tr.SessionId).OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne(tr => tr.Reviewer).WithMany().HasForeignKey(tr => tr.ReviewerId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasIndex(tr => tr.SessionId).IsUnique();
+            entity.HasIndex(tr => tr.Rating);
+        });
+
+        // Seed SubjectTags
+        modelBuilder.Entity<SubjectTag>().HasData(
+            new SubjectTag { Id = 1, Name = "Mathematics", Description = "Algebra, Calculus, Statistics, Geometry", Icon = "📐" },
+            new SubjectTag { Id = 2, Name = "Physics", Description = "Mechanics, Thermodynamics, Electromagnetism", Icon = "⚛️" },
+            new SubjectTag { Id = 3, Name = "Chemistry", Description = "Organic, Inorganic, Physical Chemistry", Icon = "🧪" },
+            new SubjectTag { Id = 4, Name = "Biology", Description = "Cell Biology, Genetics, Ecology", Icon = "🧬" },
+            new SubjectTag { Id = 5, Name = "Computer Science", Description = "Programming, Algorithms, Data Structures", Icon = "💻" },
+            new SubjectTag { Id = 6, Name = "English", Description = "Grammar, Writing, Literature", Icon = "📝" },
+            new SubjectTag { Id = 7, Name = "Spanish", Description = "Conversational, Grammar, Writing", Icon = "🗣️" },
+            new SubjectTag { Id = 8, Name = "French", Description = "Conversational, Grammar, Writing", Icon = "🥐" },
+            new SubjectTag { Id = 9, Name = "History", Description = "World History, US History, European History", Icon = "📜" },
+            new SubjectTag { Id = 10, Name = "Economics", Description = "Micro, Macroeconomics, Finance", Icon = "📊" },
+            new SubjectTag { Id = 11, Name = "Music", Description = "Piano, Guitar, Theory, Vocal", Icon = "🎵" },
+            new SubjectTag { Id = 12, Name = "Art", Description = "Drawing, Painting, Digital Art", Icon = "🎨" }
+        );
     }
 }

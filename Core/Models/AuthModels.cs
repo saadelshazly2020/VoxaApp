@@ -3,6 +3,13 @@ using System.Collections.Generic;
 
 namespace VideoChatingApp.WebRTC.Core.Models;
 
+public enum UserRole
+{
+    Student = 0,
+    Teacher = 1,
+    Admin = 2
+}
+
 public class User
 {
     public int Id { get; set; }
@@ -12,6 +19,7 @@ public class User
     public string? DisplayName { get; set; }
     public string? ProfilePictureUrl { get; set; }
     public string? Bio { get; set; }
+    public UserRole Role { get; set; } = UserRole.Student;
     public bool IsOnline { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime? LastSeen { get; set; }

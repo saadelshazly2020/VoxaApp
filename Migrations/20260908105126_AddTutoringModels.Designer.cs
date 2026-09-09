@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using VideoChatingApp.WebRTC.Data;
 
@@ -10,9 +11,11 @@ using VideoChatingApp.WebRTC.Data;
 namespace VideoChatingApp.WebRTC.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    partial class ApplicationDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260908105126_AddTutoringModels")]
+    partial class AddTutoringModels
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder.HasAnnotation("ProductVersion", "9.0.13");
@@ -554,9 +557,6 @@ namespace VideoChatingApp.WebRTC.Migrations
 
                     b.Property<DateTime?>("EndedAt")
                         .HasColumnType("TEXT");
-
-                    b.Property<bool>("ReminderSent")
-                        .HasColumnType("INTEGER");
 
                     b.Property<DateTime>("ScheduledAt")
                         .HasColumnType("TEXT");

@@ -52,7 +52,7 @@
     <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-6 lg:py-8">
       <!-- Tabs: scrolls horizontally on small screens, equal columns from lg up -->
       <div class="bg-white rounded-xl shadow-md p-2 mb-4 sm:mb-8">
-        <div class="flex gap-2 overflow-x-auto no-scrollbar lg:grid lg:grid-cols-6 lg:overflow-visible">
+        <div class="flex gap-2 overflow-x-auto no-scrollbar lg:flex lg:flex-wrap lg:overflow-visible">
           <button
             v-for="tab in tabs"
             :key="tab.id"
@@ -182,6 +182,21 @@
               </div>
             </div>
           </div>
+
+          <!-- Teachers Directory Tab -->
+          <div v-if="activeTab === 'teachers'" class="bg-slate-900 rounded-xl shadow-lg p-4 sm:p-6">
+            <TeacherDirectory @select-teacher="openBooking" />
+          </div>
+
+          <!-- My Sessions Tab -->
+          <div v-if="activeTab === 'sessions'" class="bg-slate-900 rounded-xl shadow-lg p-4 sm:p-6">
+            <MySessions @start-call="handleCallFriend" />
+          </div>
+
+          <!-- Teacher Setup Tab -->
+          <div v-if="activeTab === 'teacher-setup'" class="bg-slate-900 rounded-xl shadow-lg p-4 sm:p-6">
+            <TeacherSetup />
+          </div>
         </div>
 
         <!-- Sidebar -->
@@ -309,6 +324,33 @@
       @open-chat="openChatWithFriend"
       @call="(id, name) => handleCallFriend(id, name)"
     />
+    <BookingModal
+      :show="showBooking"
+      :teacher="bookingTeacher"
+      @close="showBooking = false"
+      @booked="onSessionBooked"
+    />
+
+    <!-- Session starting nudge -->
+    <Transition name="toast">
+      <div
+        v-if="sessionToast"
+        class="fixed bottom-6 right-6 z-[60] max-w-sm bg-gradient-to-r from-blue-600 to-purple-600 text-white rounded-2xl shadow-2xl p-4 flex items-center gap-3"
+      >
+        <div class="text-2xl">🔔</div>
+        <div class="flex-1">
+          <p class="font-semibold">Session starting</p>
+          <p class="text-sm text-white/80">{{ sessionToast.message }}</p>
+        </div>
+        <button
+          @click="joinFromToast"
+          class="px-3 py-1.5 bg-white/20 hover:bg-white/30 rounded-lg text-sm font-medium transition"
+        >
+          Join
+        </button>
+        <button @click="sessionToast = null" class="text-white/60 hover:text-white ml-1">✕</button>
+      </div>
+    </Transition>
   </div>
 </template>
 
@@ -327,18 +369,28 @@ import PostFeed from '@/components/PostFeed.vue';
 import CallOverlay from '@/components/CallOverlay.vue';
 import ProfileEditModal from '@/components/ProfileEditModal.vue';
 import UserProfileModal from '@/components/UserProfileModal.vue';
+import TeacherDirectory from '@/components/TeacherDirectory.vue';
+import BookingModal from '@/components/BookingModal.vue';
+import MySessions from '@/components/MySessions.vue';
+import TeacherSetup from '@/components/TeacherSetup.vue';
+import { tutoringService, type TeacherProfile } from '@/services/tutoring.service';
+import { signalRManager } from '@/services/signalr-manager';
 import { useCall } from '@/composables/useCall';
 import { pushNotificationService } from '@/services/push-notification.service';
 
 const router = useRouter();
 const { startCall } = useCall();
-type TabId = 'friends' | 'chat' | 'requests' | 'search' | 'video' | 'posts';
+type TabId = 'friends' | 'chat' | 'requests' | 'search' | 'video' | 'posts' | 'teachers' | 'sessions' | 'teacher-setup';
 
 const activeTab = ref<TabId>('posts');
 const roomIdInput = ref('');
 const showProfileEdit = ref(false);
 const showUserProfile = ref(false);
 const viewedUserId = ref(0);
+
+// Tutoring state
+const showBooking = ref(false);
+const bookingTeacher = ref<TeacherProfile | null>(null);
 
 const currentUser = computed(() => authService.getUser());
 const friendsCount = ref(0);
@@ -421,13 +473,52 @@ const PostsIcon = () => h('svg', {
   d: 'M19 20H5a2 2 0 01-2-2V6a2 2 0 012-2h10a2 2 0 012 2v1m2 13a2 2 0 01-2-2V7m2 13a2 2 0 002-2V9a2 2 0 00-2-2h-2m-4-3H9M7 16h6M7 8h6v4H7V8z'
 }));
 
+const TeacherIcon = () => h('svg', {
+  class: 'w-5 h-5',
+  fill: 'none',
+  stroke: 'currentColor',
+  viewBox: '0 0 24 24'
+}, h('path', {
+  'stroke-linecap': 'round',
+  'stroke-linejoin': 'round',
+  'stroke-width': '2',
+  d: 'M12 14l9-5-9-5-9 5 9 5z M12 14l6.16-3.422a12.083 12.083 0 01.665 6.479A11.952 11.952 0 0012 20.055a11.952 11.952 0 00-6.824-2.998 12.078 12.078 0 01.665-6.479L12 14z M12 14l9-5-9-5-9 5 9 5zm0 0l6.16-3.422a12.083 12.083 0 01.665 6.479A11.952 11.952 0 0012 20.055a11.952 11.952 0 00-6.824-2.998 12.078 12.078 0 01.665-6.479L12 14zm-4 6v-7.5l4-2.222'
+}));
+
+const SessionsIcon = () => h('svg', {
+  class: 'w-5 h-5',
+  fill: 'none',
+  stroke: 'currentColor',
+  viewBox: '0 0 24 24'
+}, h('path', {
+  'stroke-linecap': 'round',
+  'stroke-linejoin': 'round',
+  'stroke-width': '2',
+  d: 'M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z'
+}));
+
+const TeachIcon = () => h('svg', {
+  class: 'w-5 h-5',
+  fill: 'none',
+  stroke: 'currentColor',
+  viewBox: '0 0 24 24'
+}, h('path', {
+  'stroke-linecap': 'round',
+  'stroke-linejoin': 'round',
+  'stroke-width': '2',
+  d: 'M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z'
+}));
+
 const tabs = computed<{ id: TabId; label: string; icon: any; badge: number }[]>(() => [
   { id: 'posts', label: 'Posts', icon: PostsIcon, badge: 0 },
   { id: 'friends', label: 'Friends', icon: FriendsIcon, badge: 0 },
   { id: 'chat', label: 'Chat', icon: ChatIcon, badge: totalUnreadCount.value },
   { id: 'requests', label: 'Requests', icon: RequestsIcon, badge: pendingRequestsCount.value },
   { id: 'search', label: 'Search', icon: SearchIcon, badge: 0 },
-  { id: 'video', label: 'Video Chat', icon: VideoIcon, badge: 0 }
+  { id: 'video', label: 'Video Chat', icon: VideoIcon, badge: 0 },
+  { id: 'teachers', label: 'Teachers', icon: TeacherIcon, badge: 0 },
+  { id: 'sessions', label: 'Sessions', icon: SessionsIcon, badge: 0 },
+  { id: 'teacher-setup', label: 'Teach', icon: TeachIcon, badge: 0 }
 ]);
 
 const loadStats = async () => {
@@ -503,6 +594,42 @@ const viewUserProfile = (userId: number) => {
   showUserProfile.value = true;
 };
 
+const openBooking = async (teacher: TeacherProfile) => {
+  try {
+    // Fetch full profile (includes availability slots) for accurate booking
+    bookingTeacher.value = await tutoringService.getTeacherProfile(teacher.id);
+    showBooking.value = true;
+  } catch (err) {
+    console.error('Failed to load teacher profile', err);
+    bookingTeacher.value = teacher;
+    showBooking.value = true;
+  }
+};
+
+// Session-start nudge (real-time)
+const sessionToast = ref<{ id: number; message: string } | null>(null);
+
+const joinFromToast = async () => {
+  const t = sessionToast.value;
+  if (!t) return;
+  try {
+    const s = await tutoringService.getSession(t.id);
+    const me = authService.getUser()?.id;
+    const peerId = s.teacherId === me ? (s.studentId || 0) : (s.teacherId || 0);
+    const peerName = s.teacherId === me ? s.studentDisplayName : s.teacherDisplayName;
+    sessionToast.value = null;
+    if (peerId > 0) handleCallFriend(peerId, peerName);
+  } catch (err) {
+    console.warn('Failed to join from toast', err);
+    sessionToast.value = null;
+  }
+};
+
+const onSessionBooked = () => {
+  showBooking.value = false;
+  activeTab.value = 'sessions';
+};
+
 onMounted(async () => {
   // Check if user is authenticated
   if (!authService.isAuthenticated()) {
@@ -518,7 +645,33 @@ onMounted(async () => {
     await pushNotificationService.subscribe();
   }
 
+  // Listen for real-time session-start nudges
+  try {
+    const svc = await signalRManager.acquire();
+    svc.on('SessionStarting', (id: number) => {
+      sessionToast.value = { id, message: 'Your tutoring session is about to begin.' };
+      activeTab.value = 'sessions';
+      setTimeout(() => {
+        if (sessionToast.value?.id === id) sessionToast.value = null;
+      }, 20000);
+    });
+  } catch (err) {
+    console.warn('Failed to subscribe to session nudges', err);
+  }
+
   // Refresh stats every 30 seconds
   setInterval(loadStats, 30000);
 });
 </script>
+
+<style scoped>
+.toast-enter-active,
+.toast-leave-active {
+  transition: all 0.3s ease;
+}
+.toast-enter-from,
+.toast-leave-to {
+  opacity: 0;
+  transform: translateY(12px);
+}
+</style>
